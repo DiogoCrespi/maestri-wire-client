@@ -1,20 +1,29 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/canvas_node.dart';
+import '../../core/network/wire_client.dart';
 import 'node_card.dart';
+import 'portal_live_preview.dart';
 
 /// Widget de Nó de Portal Web (Navegador Integrado) do Maestri Wire
 class PortalNodeWidget extends StatelessWidget {
   final CanvasNode node;
   final bool isSelected;
   final VoidCallback? onTap;
+  final WireClient? client;
 
   const PortalNodeWidget({
     Key? key,
     required this.node,
     this.isSelected = false,
     this.onTap,
+    this.client,
   }) : super(key: key);
+
+  String? get _portalId {
+    final portalData = node.rawData['portal'] as Map<String, dynamic>?;
+    return portalData?['portalId'] as String?;
+  }
 
   String get _url {
     final portalData = node.rawData['portal'] as Map<String, dynamic>?;
@@ -68,9 +77,24 @@ class PortalNodeWidget extends StatelessWidget {
               ),
             ),
 
-            // Conteúdo do Portal
+            // Conteúdo do Portal: prévia ao vivo do host, ou o cartão de status
             Expanded(
-              child: Center(
+              child: _portalId != null && client != null
+                  ? PortalLivePreview(
+                      client: client!,
+                      portalId: _portalId!,
+                      fallback: _statusCard(),
+                    )
+                  : _statusCard(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statusCard() {
+    return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -138,11 +162,6 @@ class PortalNodeWidget extends StatelessWidget {
                     ],
                   ),
                 ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+              );
   }
 }

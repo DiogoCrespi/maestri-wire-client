@@ -20,7 +20,9 @@ Este documento consolida o diagnóstico técnico completo da arquitetura, funcio
 
 ### 🌐 Conectividade e Protocolo Maestri Wire
 - [x] **Criptografia & Pinning TLS**:
-  - `WireClient` com verificação de SPKI SHA-256 e tolerância a certificados autoassinados da rede local / Tailscale.
+  - Certificado autoassinado do host é aceito só se o SHA-256 da SPKI (ou do DER completo, formato antigo) bater com o `serverKeyHash` do pareamento (`lib/core/network/tls_pinning.dart`), inclusive nos WebSockets de Feed e Terminal.
+  - Pareamento manual, sem hash: o certificado visto é fixado no primeiro contato (TOFU).
+  - Limitação: certificados que passam na validação padrão do sistema (CA pública) não passam pelo pin.
 - [x] **Pareamento Flexível**:
   - Leitura de QR Code via câmera integrada (`mobile_scanner`).
   - **Upload de imagem/print da galeria** para pareamento quando o QR Code foi capturado por screenshot.
@@ -35,6 +37,9 @@ Este documento consolida o diagnóstico técnico completo da arquitetura, funcio
 
 ### 💻 Terminais e Agentes de IA (Codex, Claude, Shell)
 - [x] **Streaming PTY Interativo**: Conexão bidirecional via WebSocket em `/api/terminals/{id}/stream`.
+  - UTF-8 decodificado de forma incremental: caractere acentuado cortado entre frames não vira `�`.
+  - Buffer de terminal simplificado (`terminal_text.dart`): `\r` redesenha a linha (spinner "Working" não duplica), `ESC[K` apaga até o fim.
+  - Tela de terminal em blocos de conversa: mensagem do usuário (`›`), resposta do agente (`•`), status ("Working"/"Worked for") e saída crua.
 - [x] **Suporte Completo a Acentuações em Português Brasileiro**: Envio de payloads estritamente em UTF-8 nativo (`application/json; charset=utf-8`), garantindo que palavras como `ação, coração, café, você, número` cheguem sem caracteres corrompidos (`?` / ``).
 - [x] **Seleção de Texto e Cópia Estável**:
   - Substituição da árvore `SelectionArea` instável por `SelectableText` de alta performance, eliminando por completo o erro `Null check operator used on a null value`.

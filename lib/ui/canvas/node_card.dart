@@ -9,6 +9,12 @@ class NodeCard extends StatelessWidget {
   final bool isSelected;
   final VoidCallback? onTap;
   final Widget child;
+  /// Cabeçalho próprio (ex.: agente + estado). Se nulo, usa a barra padrão com ícone e título.
+  final Widget? header;
+  /// Cor de destaque do tipo (ex.: cor do agente), usada em um filete no topo do card.
+  final Color? accent;
+  /// Cor da borda quando o card precisa de atenção (ex.: âmbar).
+  final Color? highlight;
 
   const NodeCard({
     Key? key,
@@ -16,6 +22,9 @@ class NodeCard extends StatelessWidget {
     this.isSelected = false,
     this.onTap,
     required this.child,
+    this.header,
+    this.accent,
+    this.highlight,
   }) : super(key: key);
 
   Color _getStatusColor() {
@@ -43,7 +52,17 @@ class NodeCard extends StatelessWidget {
         return Icons.hub_rounded;
       case NodeType.routine:
         return Icons.schedule_rounded;
-      default:
+      case NodeType.noteStack:
+        return Icons.auto_stories_rounded;
+      case NodeType.text:
+        return Icons.title_rounded;
+      case NodeType.file:
+        return Icons.insert_drive_file_rounded;
+      case NodeType.link:
+        return Icons.link_rounded;
+      case NodeType.connector:
+        return Icons.cable_rounded;
+      case NodeType.unknown:
         return Icons.widgets_rounded;
     }
   }
@@ -55,14 +74,34 @@ class NodeCard extends StatelessWidget {
       child: Container(
         width: node.size.width,
         height: node.size.height,
-        decoration: MacTheme.glassCardDecoration(
-          isSelected: isSelected,
-          borderRadius: 12.0,
-        ),
+        decoration: highlight != null
+            ? BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: highlight!, width: 1.6),
+                boxShadow: [
+                  BoxShadow(color: highlight!.withValues(alpha: 0.25), blurRadius: 14),
+                ],
+              )
+            : MacTheme.glassCardDecoration(
+                isSelected: isSelected,
+                borderRadius: 14.0,
+              ),
         clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (accent != null) Container(height: 2, color: accent!.withValues(alpha: 0.85)),
+            if (header != null)
+              Container(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                decoration: const BoxDecoration(
+                  color: AppColors.surfaceElevated,
+                  border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
+                ),
+                child: header,
+              )
+            else
             // Barra de título do Card estilo Mac
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

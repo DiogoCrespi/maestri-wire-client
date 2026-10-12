@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'terminal_text.dart';
+import 'tls_pinning.dart';
 import 'wire_client.dart';
 
 /// Gerenciador do Stream de Terminal PTY em tempo real.
@@ -15,13 +17,23 @@ class TerminalStream {
   final StreamController<String> _textOutputController =
       StreamController<String>.broadcast();
 
+  // Um decodificador por conexão: mantém bytes parciais de caracteres UTF-8
+  Utf8StreamDecoder _utf8 = Utf8StreamDecoder();
+
+  final StreamController<({int rows, int cols})> _geometryController =
+      StreamController<({int rows, int cols})>.broadcast();
+
   Stream<String> get output => _textOutputController.stream;
+
+  /// Tamanho da tela da TUI no host (`{"type":"geometry", cols, rows}`).
+  Stream<({int rows, int cols})> get geometry => _geometryController.stream;
   bool get isConnected => _isConnected;
 
   TerminalStream({required this.client, required this.terminalId});
 
   Future<void> connect() async {
     disconnect();
+    _utf8 = Utf8StreamDecoder();
 
     final pair = client.currentPairData;
     final token = client.authToken;
@@ -37,8 +49,7 @@ class TerminalStream {
       queryParameters: {'token': token},
     );
 
-    final customHttpClient = HttpClient()
-      ..badCertificateCallback = (cert, host, port) => true;
+    final customHttpClient = createPinnedHttpClient(expectedPin: pair.serverKeyHash);
 
     _socket = await WebSocket.connect(
       uri.toString(),
@@ -49,27 +60,17 @@ class TerminalStream {
 
     _subscription = _socket!.listen(
       (data) {
-        String? text;
         if (data is String) {
-          // Ignora mensagens de controle interno como {"type":"geometry", ...}
+          // Mensagens de controle internas: geometria vai para a tela, o resto é ignorado
           if (data.trim().startsWith('{"type":')) {
+            _handleControl(data);
             return;
           }
-          text = data;
+          _textOutputController.add(data);
         } else if (data is List<int>) {
-          text = utf8.decode(data, allowMalformed: true);
-        }
-
-        if (text != null && text.isNotEmpty) {
-          // Limpa sequências de escape ANSI cruas (CSI, OSC, etc.) e caracteres de controle
-          final clean = text
-              .replaceAll(RegExp(r'\x1B\][^\x07\x1B]*[\x07\x1B\\]'), '')
-              .replaceAll(RegExp(r'\x1B\[[0-?]*[ -/]*[@-~]'), '')
-              .replaceAll(RegExp(r'\x1B[@-Z\\-_]'), '')
-              .replaceAll(RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F]'), '');
-          if (clean.isNotEmpty) {
-            _textOutputController.add(clean);
-          }
+          // Decodificação UTF-8 com estado: um caractere cortado entre frames é preservado
+          final text = _utf8.add(data);
+          if (text.isNotEmpty) _textOutputController.add(text);
         }
       },
       onError: (e) => _isConnected = false,
@@ -77,10 +78,34 @@ class TerminalStream {
     );
   }
 
+  void _handleControl(String data) {
+    try {
+      final json = jsonDecode(data) as Map<String, dynamic>;
+      if (json['type'] == 'geometry') {
+        _geometryController.add((
+          rows: (json['rows'] as num).toInt(),
+          cols: (json['cols'] as num).toInt(),
+        ));
+      }
+    } catch (_) {
+      // Controle malformado: não interrompe o stream
+    }
+  }
+
   /// Envia texto ou comandos digitados pelo usuário para o terminal remoto via frame binário
   void sendInput(String text) {
     if (_isConnected && _socket != null) {
       _socket!.add(utf8.encode(text));
+    }
+  }
+
+  /// Envia teclas de controle (setas, Enter, Esc) como bytes, pelo canal `inputBytes`.
+  void sendControl(String sequence) {
+    if (_isConnected && _socket != null) {
+      _socket!.add(jsonEncode({
+        'type': 'inputBytes',
+        'data': base64Encode(utf8.encode(sequence)),
+      }));
     }
   }
 
@@ -106,5 +131,6 @@ class TerminalStream {
   void dispose() {
     disconnect();
     _textOutputController.close();
+    _geometryController.close();
   }
 }

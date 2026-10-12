@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'tls_pinning.dart';
 import 'wire_client.dart';
 
 /// Gerenciador do Feed WebSocket em tempo real.
@@ -51,8 +52,7 @@ class FeedSocket {
     );
 
     try {
-      final customHttpClient = HttpClient()
-        ..badCertificateCallback = (cert, host, port) => true;
+      final customHttpClient = createPinnedHttpClient(expectedPin: pair.serverKeyHash);
 
       _socket = await WebSocket.connect(
         uri.toString(),
@@ -113,6 +113,13 @@ class FeedSocket {
   void sendJson(Map<String, dynamic> message) {
     if (_isConnected && _socket != null) {
       _socket!.add(jsonEncode(message));
+    }
+  }
+
+  /// Envia uma mensagem já serializada (ex.: builders de feed_events.dart).
+  void sendRaw(String message) {
+    if (_isConnected && _socket != null) {
+      _socket!.add(message);
     }
   }
 
